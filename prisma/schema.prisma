@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  REP
+}
+
+enum LeadStage {
+  NEW
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum LeadSource {
+  REFERRAL
+  WEBSITE
+  OUTBOUND
+  PARTNER
+  EVENT
+  OTHER
+}
+
+enum LeadPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELED
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  STAGE_CHANGED
+  OWNER_CHANGED
+  NOTE_ADDED
+  FOLLOW_UP_CREATED
+  FOLLOW_UP_COMPLETED
+  FOLLOW_UP_CANCELED
+  DETAILS_UPDATED
+}
+
+model User {
+  id               String        @id @default(cuid())
+  email            String        @unique
+  name             String
+  role             UserRole
+  passwordHash     String
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  ownedLeads       Lead[]        @relation("LeadOwner")
+  createdLeads     Lead[]        @relation("LeadCreator")
+  authoredNotes    Note[]
+  ownedFollowUps   FollowUp[]    @relation("FollowUpOwner")
+  createdFollowUps FollowUp[]    @relation("FollowUpCreator")
+  activities       ActivityLog[] @relation("ActivityActor")
+}
+
+model Lead {
+  id             String        @id @default(cuid())
+  companyName    String
+  contactName    String
+  email          String
+  phone          String?
+  description    String?
+  stage          LeadStage
+  source         LeadSource
+  priority       LeadPriority  @default(MEDIUM)
+  valueCents     Int?
+  ownerId        String
+  createdById    String
+  lastContactedAt DateTime?
+  nextFollowUpAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  owner          User          @relation("LeadOwner", fields: [ownerId], references: [id])
+  createdBy      User          @relation("LeadCreator", fields: [createdById], references: [id])
+  notes          Note[]
+  followUps      FollowUp[]
+  activities     ActivityLog[]
+
+  @@index([ownerId, stage])
+  @@index([stage, nextFollowUpAt])
+  @@index([createdAt])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  leadId     String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+model FollowUp {
+  id          String         @id @default(cuid())
+  leadId       String
+  ownerId     String
+  createdById String
+  description String
+  dueAt       DateTime
+  status      FollowUpStatus @default(PENDING)
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  owner       User           @relation("FollowUpOwner", fields: [ownerId], references: [id])
+  createdBy   User           @relation("FollowUpCreator", fields: [createdById], references: [id])
+
+  @@index([leadId, dueAt])
+  @@index([ownerId, status, dueAt])
+}
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  leadId     String
+  actorId   String?
+  type      ActivityType
+  message   String
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  lead      Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor     User?        @relation("ActivityActor", fields: [actorId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
